@@ -233,7 +233,7 @@ async def unmute(interaction: discord.Interaction, user: discord.Member):
 async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
     add_warning(user.id, interaction.user.id, reason)
     warnings = get_warnings(user.id)
-    
+
     # --- Modlog embed ---
     embed = discord.Embed(title="⚠️ Warning", color=discord.Color.orange())
     embed.add_field(name="User", value=user.mention, inline=True)
@@ -241,16 +241,16 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.add_field(name="Total Warnings", value=str(len(warnings)), inline=False)
     embed.set_footer(text=f"Oggi alle {interaction.created_at.strftime('%H:%M')}")
-    
+
     # Send to modlog channel
     if LOG_CHANNEL_ID:
         channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if channel:
             await channel.send(embed=embed)
-    
+
     # DM the warned user
     await send_warn_dm(user, reason, interaction.user)
-    
+
     # Auto-ban check
     if len(warnings) >= AUTO_BAN_WARNINGS:
         await user.ban(reason="Too many warnings")
@@ -258,11 +258,11 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
         await interaction.response.send_message(
             f"⚠️ {user.mention} warned and auto-banned (limit reached)."
         )
-        return
-    
-    await interaction.response.send_message(
-        f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}"
-    )
+    else:
+        # Solo un messaggio, sempre
+        await interaction.response.send_message(
+            f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}"
+        )
 
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warnings", description="Check warnings")
@@ -316,4 +316,5 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
