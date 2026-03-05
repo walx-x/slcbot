@@ -251,7 +251,7 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
     # DM the warned user
     await send_warn_dm(user, reason, interaction.user)
 
-    # Auto-ban check
+    # Risposta all’interaction (solo una volta!)
     if len(warnings) >= AUTO_BAN_WARNINGS:
         await user.ban(reason="Too many warnings")
         await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
@@ -259,7 +259,6 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
             f"⚠️ {user.mention} warned and auto-banned (limit reached)."
         )
     else:
-        # Solo un messaggio, sempre
         await interaction.response.send_message(
             f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}"
         )
@@ -340,6 +339,7 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
