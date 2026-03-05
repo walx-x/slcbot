@@ -282,6 +282,30 @@ async def clear_user_warnings(interaction: discord.Interaction, user: discord.Me
     clear_warnings(user.id)
     await interaction.response.send_message(f"🗑️ Warnings cleared for {user.mention}")
 
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="warnings_all", description="Show all warnings given to all users")
+async def warnings_all(interaction: discord.Interaction):
+    cursor.execute("SELECT id, user_id, moderator_id, reason, timestamp FROM warnings ORDER BY timestamp DESC")
+    data = cursor.fetchall()
+
+    if not data:
+        await interaction.response.send_message("✅ No warnings recorded.")
+        return
+
+    text = ""
+    for warn_id, user_id, mod_id, reason, timestamp in data:
+        member = interaction.guild.get_member(user_id)
+        moderator = interaction.guild.get_member(mod_id)
+        user_name = member.name if member else f"User ID {user_id}"
+        mod_name = moderator.name if moderator else f"User ID {mod_id}"
+        text += f"ID {warn_id} | User: {user_name} | Moderator: {mod_name} | Reason: {reason} | {timestamp}\n"
+
+    # Discord non permette messaggi troppo lunghi, quindi si può mandare in chunk da 2000 caratteri
+    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+    await interaction.response.send_message(f"📜 All Warnings (total {len(data)}):")
+    for chunk in chunks:
+        await interaction.followup.send(chunk)
+
 # ---------------- CLEAR MESSAGES COMMAND ----------------
 @app_commands.checks.has_permissions(manage_messages=True)
 @bot.tree.command(name="clear", description="Delete messages in a channel")
@@ -316,5 +340,6 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
