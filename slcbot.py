@@ -7,8 +7,11 @@ import sqlite3
 from dotenv import load_dotenv
 from datetime import timedelta
 
-# Load variables from .env
+# --- Load environment variables ---
 load_dotenv()
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("Token not found: set DISCORD_BOT_TOKEN")
 
 # --- XP roles configuration ---
 XP_ROLES = {
@@ -19,7 +22,7 @@ XP_ROLES = {
 
 # --- CONFIG ---
 AUTO_BAN_WARNINGS = 3
-LOG_CHANNEL_ID = 1479152748598399046  # --- NUOVO: canale modlogs
+LOG_CHANNEL_ID = 1479152748598399046  # Modlogs channel
 
 # --- Intents ---
 intents = discord.Intents.default()
@@ -28,21 +31,18 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- Token ---
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("Token not found: set DISCORD_BOT_TOKEN")
-
-# --- Database ---
+# --- Database setup ---
 DB_PATH = "xp.db"
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS xp (
     user_id INTEGER PRIMARY KEY,
     xp INTEGER NOT NULL
 )
 """)
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS warnings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS warnings (
 """)
 conn.commit()
 
-# ---------------- XP SYSTEM (INVARIATO) ----------------
+# ---------------- XP SYSTEM ----------------
 def get_xp(user_id: int) -> int:
     cursor.execute("SELECT xp FROM xp WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
@@ -73,13 +73,17 @@ async def update_roles(member: discord.Member, xp: int) -> None:
     for role_id in to_add:
         role = guild.get_role(role_id)
         if role:
-            try: await member.add_roles(role, reason="XP threshold reached")
-            except Exception: pass
+            try:
+                await member.add_roles(role, reason="XP threshold reached")
+            except Exception:
+                pass
     for role_id in to_remove:
         role = guild.get_role(role_id)
         if role:
-            try: await member.remove_roles(role, reason="XP dropped below threshold")
-            except Exception: pass
+            try:
+                await member.remove_roles(role, reason="XP dropped below threshold")
+            except Exception:
+                pass
 
 # ---------------- WARN SYSTEM ----------------
 def add_warning(user_id: int, moderator_id: int, reason: str):
@@ -107,14 +111,12 @@ async def send_log(guild, message: str):
         if channel:
             await channel.send(message)
 
-# --- NUOVO: Invio DM alla warn ricevuta
 async def send_warn_dm(user: discord.Member, reason: str, moderator: discord.Member):
     try:
         await user.send(f"⚠️ You received a warning from {moderator.mention} for: {reason}")
     except Exception:
         pass
 
-# --- NUOVO: Invio DM di benvenuto
 async def send_welcome_dm(member: discord.Member):
     try:
         await member.send(
@@ -132,16 +134,98 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Bot online as {bot.user}")
 
-# --- NUOVO: DM welcome on join
 @bot.event
 async def on_member_join(member: discord.Member):
     await send_welcome_dm(member)
 
-# ---------------- XP COMMANDS (INVARIATI) ----------------
-# ... (tutti i comandi xp_add, xp_remove, xp_set, xp_check rimangono invariati)
+# ---------------- XP COMMANDS ----------------
+@app_commands.checks.has_permissions(manage_roles=True)
+@bot.tree.command(name="xp_add", description="Add XP to a user")
+async def xp_add(interaction: discord.Interaction, user: discord.Member, amount: int):
+    xp = get_xp(user.id) + amount
+    set_xp(user.id, xp)
+    await update_roles(user, xp)
+    await interaction.response.send_message(f"✅ {amount} XP added to {user.mention} (Total: {xp})")
+
+@app_commands.checks.has_permissions(manage_roles=True)
+@bot.tree.command(name="xp_remove", description="Remove XP from a user")
+async def xp_remove(interaction: discord.Interaction, user: discord.Member, amount: int):
+    xp = max(0, get_xp(user.id) - amount)
+    set_xp(user.id, xp)
+    await update_roles(user, xp)
+    await interaction.response.send_message(f"❌ {amount} XP removed from {user.mention} (Total: {xp})")
+
+@app_commands.checks.has_permissions(manage_roles=True)
+@bot.tree.command(name="xp_set", description="Set XP")
+async def xp_set(interaction: discord.Interaction, user: discord.Member, amount: int):
+    set_xp(user.id, amount)
+    await update_roles(user, amount)
+    await interaction.response.send_message(f"🎯 XP for {user.mention} set to {amount}")
+
+@bot.tree.command(name="xp_check", description="Check a user's XP")
+async def xp_check(interaction: discord.Interaction, user: discord.Member = None):
+    user = user or interaction.user
+    xp = get_xp(user.id)
+    sorted_roles = sorted(XP_ROLES.items())
+    current_rank = "Unranked"
+    next_rank = None
+    next_xp = None
+    for req, role_id in sorted_roles:
+        if xp >= req:
+            current_rank = interaction.guild.get_role(role_id).name
+        else:
+            next_rank = interaction.guild.get_role(role_id).name
+            next_xp = req
+            break
+    if next_xp:
+        progress = xp / next_xp
+        filled = int(progress * 20)
+        bar = "█" * filled + "░" * (20 - filled)
+        remaining = next_xp - xp
+        progress_percent = round(progress * 100, 1)
+    else:
+        bar = "████████████████████"
+        remaining = 0
+        progress_percent = 100.0
+    embed = discord.Embed(title=f"{user.display_name}'s XP Profile", color=discord.Color.blue())
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.add_field(name="Rank", value=f"**{current_rank}**", inline=True)
+    embed.add_field(name="XP", value=f"**{xp} XP**", inline=True)
+    if next_rank:
+        embed.add_field(name="Next Rank", value=f"**{next_rank}** ({remaining} XP remaining)", inline=False)
+    else:
+        embed.add_field(name="Next Rank", value="Max rank reached", inline=False)
+    embed.add_field(name="Progress", value=f"{bar}\n**{progress_percent}%**", inline=False)
+    await interaction.response.send_message(embed=embed)
 
 # ---------------- MODERATION ----------------
-# ... (ban, kick, mute, unmute rimangono invariati)
+@app_commands.checks.has_permissions(ban_members=True)
+@bot.tree.command(name="ban", description="Ban a user")
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    await user.ban(reason=reason)
+    await send_log(interaction.guild, f"🔨 {user} banned | {reason}")
+    await interaction.response.send_message(f"🔨 {user.mention} banned.")
+
+@app_commands.checks.has_permissions(kick_members=True)
+@bot.tree.command(name="kick", description="Kick a user")
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    await user.kick(reason=reason)
+    await send_log(interaction.guild, f"👢 {user} kicked | {reason}")
+    await interaction.response.send_message(f"👢 {user.mention} kicked.")
+
+@app_commands.checks.has_permissions(moderate_members=True)
+@bot.tree.command(name="mute", description="Timeout a user")
+async def mute(interaction: discord.Interaction, user: discord.Member, minutes: int, reason: str = "No reason provided"):
+    await user.timeout(timedelta(minutes=minutes), reason=reason)
+    await send_log(interaction.guild, f"🔇 {user} muted {minutes}m | {reason}")
+    await interaction.response.send_message(f"🔇 {user.mention} muted for {minutes} minutes.")
+
+@app_commands.checks.has_permissions(moderate_members=True)
+@bot.tree.command(name="unmute", description="Remove timeout")
+async def unmute(interaction: discord.Interaction, user: discord.Member):
+    await user.timeout(None)
+    await send_log(interaction.guild, f"🔊 {user} unmuted")
+    await interaction.response.send_message(f"🔊 {user.mention} unmuted.")
 
 # ---------------- WARN COMMANDS ----------------
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -150,19 +234,33 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
     add_warning(user.id, interaction.user.id, reason)
     warnings = get_warnings(user.id)
     await send_log(interaction.guild, f"⚠️ {user} warned | {reason}")
-    await send_warn_dm(user, reason, interaction.user)  # --- NUOVO: DM warning
+    await send_warn_dm(user, reason, interaction.user)
     if len(warnings) >= AUTO_BAN_WARNINGS:
         await user.ban(reason="Too many warnings")
         await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
-        await interaction.response.send_message(
-            f"⚠️ {user.mention} warned and auto-banned (limit reached)."
-        )
+        await interaction.response.send_message(f"⚠️ {user.mention} warned and auto-banned (limit reached).")
         return
-    await interaction.response.send_message(
-        f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}"
-    )
+    await interaction.response.send_message(f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}")
 
-# ---------------- CLEAR MESSAGES COMMAND (NUOVO) ----------------
+@app_commands.checks.has_permissions(moderate_members=True)
+@bot.tree.command(name="warnings", description="Check warnings")
+async def warnings_cmd(interaction: discord.Interaction, user: discord.Member):
+    data = get_warnings(user.id)
+    if not data:
+        await interaction.response.send_message("✅ No warnings.")
+        return
+    text = ""
+    for warn_id, mod_id, reason, timestamp in data:
+        text += f"ID {warn_id} | {reason} | {timestamp}\n"
+    await interaction.response.send_message(text)
+
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="clear_warnings", description="Clear warnings")
+async def clear_user_warnings(interaction: discord.Interaction, user: discord.Member):
+    clear_warnings(user.id)
+    await interaction.response.send_message(f"🗑️ Warnings cleared for {user.mention}")
+
+# ---------------- CLEAR MESSAGES COMMAND ----------------
 @app_commands.checks.has_permissions(manage_messages=True)
 @bot.tree.command(name="clear", description="Delete messages in a channel")
 async def clear(interaction: discord.Interaction, amount: str):
@@ -178,7 +276,7 @@ async def clear(interaction: discord.Interaction, amount: str):
         except ValueError:
             await interaction.response.send_message("❌ Invalid number", ephemeral=True)
 
-# ---------------- XP LEADERBOARD (NUOVO) ----------------
+# ---------------- XP LEADERBOARD ----------------
 @bot.tree.command(name="xp_leaderboard", description="Show XP leaderboard")
 async def xp_leaderboard(interaction: discord.Interaction):
     cursor.execute("SELECT user_id, xp FROM xp ORDER BY xp DESC LIMIT 10")
@@ -192,12 +290,6 @@ async def xp_leaderboard(interaction: discord.Interaction):
         name = member.name if member else f"User ID {user_id}"
         embed.add_field(name=f"{idx}. {name}", value=f"{xp} XP", inline=False)
     await interaction.response.send_message(embed=embed)
-
-# ---------------- WARNINGS COMMAND ----------------
-# ... (già presente, mostra le warning)
-
-# ---------------- CLEAR WARNINGS ----------------
-# ... (già presente)
 
 # ---------------- START ----------------
 if __name__ == "__main__":
