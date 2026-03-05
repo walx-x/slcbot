@@ -10,8 +10,8 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-MODLOG_CHANNEL = 1479152748598399046
 AUTO_BAN_WARNINGS = 3
+MODLOG_CHANNEL = 1479152748598399046
 
 XP_ROLES = {
     100: 1478412603557544128,
@@ -19,15 +19,11 @@ XP_ROLES = {
     600: 1475526619132203161
 }
 
-# ---------------- INTENTS ----------------
-
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
+intents = discord.Intents.all()
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- DATABASE ----------------
+# DATABASE
 
 conn = sqlite3.connect("bot.db")
 cursor = conn.cursor()
@@ -35,7 +31,7 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS xp(
 user_id INTEGER PRIMARY KEY,
-xp INTEGER DEFAULT 0
+xp INTEGER
 )
 """)
 
@@ -49,16 +45,9 @@ timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS warned_users(
-user_id INTEGER PRIMARY KEY,
-first_warn DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-""")
-
 conn.commit()
 
-# ---------------- MODLOG ----------------
+# ---------------- LOG SYSTEM ----------------
 
 async def modlog(guild, embed):
 
@@ -70,19 +59,19 @@ async def modlog(guild, embed):
 
 # ---------------- XP ----------------
 
-def get_xp(user):
+def get_xp(user_id):
 
-    cursor.execute("SELECT xp FROM xp WHERE user_id=?", (user,))
+    cursor.execute("SELECT xp FROM xp WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
 
     return row[0] if row else 0
 
 
-def set_xp(user, xp):
+def set_xp(user_id, xp):
 
     cursor.execute(
         "INSERT OR REPLACE INTO xp(user_id,xp) VALUES(?,?)",
-        (user, xp)
+        (user_id, xp)
     )
 
     conn.commit()
@@ -102,6 +91,15 @@ async def update_roles(member, xp):
         if role:
             await member.add_roles(role)
 
+    for req, role_id in XP_ROLES.items():
+
+        if xp < req and role_id in current:
+
+            role = guild.get_role(role_id)
+
+            if role:
+                await member.remove_roles(role)
+
 # ---------------- WARN ----------------
 
 def add_warning(user, mod, reason):
@@ -111,18 +109,13 @@ def add_warning(user, mod, reason):
         (user, mod, reason)
     )
 
-    cursor.execute(
-        "INSERT OR IGNORE INTO warned_users(user_id) VALUES(?)",
-        (user,)
-    )
-
     conn.commit()
 
 
 def get_warnings(user):
 
     cursor.execute(
-        "SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id=?",
+        "SELECT * FROM warnings WHERE user_id=?",
         (user,)
     )
 
@@ -147,40 +140,49 @@ async def on_ready():
 
     print(f"Bot online: {bot.user}")
 
-# ---------------- MEMBER JOIN DM ----------------
+# ---------------- XP COMMANDS ----------------
 
-@bot.event
-async def on_member_join(member):
+@app_commands.checks.has_permissions(manage_roles=True)
+@bot.tree.command(name="xp_add")
+async def xp_add(interaction: discord.Interaction, user: discord.Member, amount: int):
+
+    xp = get_xp(user.id) + amount
+
+    set_xp(user.id, xp)
+
+    await update_roles(user, xp)
+
+    await interaction.response.send_message(
+        f"Added {amount} XP to {user.mention} (Total {xp})"
+    )
+
+
+@app_commands.command(name="xp_check")
+async def xp_check(interaction: discord.Interaction, user: discord.Member = None):
+
+    user = user or interaction.user
+
+    xp = get_xp(user.id)
 
     embed = discord.Embed(
-        title="Welcome!",
-        description=(
-            "Welcome to the server!\n\n"
-            "Please verify yourself in the **Verify** channel.\n\n"
-            "When you're ready go to **Become A Member** "
-            "and open a ticket."
-        ),
-        color=discord.Color.green()
+        title=f"{user.display_name} XP",
+        color=discord.Color.blue()
     )
 
-    try:
-        await member.send(embed=embed)
-    except:
-        pass
+    embed.add_field(name="XP", value=xp)
 
-# ---------------- LEADERBOARD ----------------
+    await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="leaderboard")
+
+@app_commands.command(name="leaderboard")
 async def leaderboard(interaction: discord.Interaction):
 
-    cursor.execute(
-        "SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10"
-    )
+    cursor.execute("SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10")
 
     data = cursor.fetchall()
 
     embed = discord.Embed(
-        title="XP Leaderboard",
+        title="🏆 XP Leaderboard",
         color=discord.Color.gold()
     )
 
@@ -198,24 +200,6 @@ async def leaderboard(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-# ---------------- XP CHECK ----------------
-
-@bot.tree.command(name="xp_check")
-async def xp_check(interaction: discord.Interaction, user: discord.Member=None):
-
-    user = user or interaction.user
-
-    xp = get_xp(user.id)
-
-    embed = discord.Embed(
-        title=f"{user.display_name} XP",
-        color=discord.Color.blue()
-    )
-
-    embed.add_field(name="XP", value=xp)
-
-    await interaction.response.send_message(embed=embed)
-
 # ---------------- CLEAR CHAT ----------------
 
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -227,12 +211,13 @@ async def clear(interaction: discord.Interaction, amount: int):
     deleted = await interaction.channel.purge(limit=amount)
 
     embed = discord.Embed(
-        title="Chat Cleared",
+        title="🧹 Chat Cleared",
         color=discord.Color.orange()
     )
 
     embed.add_field(name="Moderator", value=interaction.user.mention)
     embed.add_field(name="Messages", value=len(deleted))
+    embed.add_field(name="Channel", value=interaction.channel.mention)
 
     await modlog(interaction.guild, embed)
 
@@ -241,15 +226,18 @@ async def clear(interaction: discord.Interaction, amount: int):
         ephemeral=True
     )
 
-# ---------------- BAN ----------------
+# ---------------- MODERATION ----------------
 
 @app_commands.checks.has_permissions(ban_members=True)
 @bot.tree.command(name="ban")
-async def ban(interaction: discord.Interaction, user: discord.Member, reason: str="No reason"):
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason"):
 
     await user.ban(reason=reason)
 
-    embed = discord.Embed(title="Ban", color=discord.Color.red())
+    embed = discord.Embed(
+        title="🔨 Ban",
+        color=discord.Color.red()
+    )
 
     embed.add_field(name="User", value=user.mention)
     embed.add_field(name="Moderator", value=interaction.user.mention)
@@ -259,15 +247,17 @@ async def ban(interaction: discord.Interaction, user: discord.Member, reason: st
 
     await interaction.response.send_message("User banned")
 
-# ---------------- KICK ----------------
 
 @app_commands.checks.has_permissions(kick_members=True)
 @bot.tree.command(name="kick")
-async def kick(interaction: discord.Interaction, user: discord.Member, reason: str="No reason"):
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason"):
 
     await user.kick(reason=reason)
 
-    embed = discord.Embed(title="Kick", color=discord.Color.orange())
+    embed = discord.Embed(
+        title="👢 Kick",
+        color=discord.Color.orange()
+    )
 
     embed.add_field(name="User", value=user.mention)
     embed.add_field(name="Moderator", value=interaction.user.mention)
@@ -277,25 +267,27 @@ async def kick(interaction: discord.Interaction, user: discord.Member, reason: s
 
     await interaction.response.send_message("User kicked")
 
-# ---------------- MUTE ----------------
 
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="mute")
-async def mute(interaction: discord.Interaction, user: discord.Member, minutes: int, reason: str="No reason"):
+async def mute(interaction: discord.Interaction, user: discord.Member, minutes: int, reason: str = "No reason"):
 
     await user.timeout(timedelta(minutes=minutes))
 
-    embed = discord.Embed(title="Mute", color=discord.Color.yellow())
+    embed = discord.Embed(
+        title="🔇 Mute",
+        color=discord.Color.yellow()
+    )
 
     embed.add_field(name="User", value=user.mention)
     embed.add_field(name="Moderator", value=interaction.user.mention)
     embed.add_field(name="Duration", value=f"{minutes} minutes")
+    embed.add_field(name="Reason", value=reason)
 
     await modlog(interaction.guild, embed)
 
     await interaction.response.send_message("User muted")
 
-# ---------------- UNMUTE ----------------
 
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="unmute")
@@ -303,7 +295,10 @@ async def unmute(interaction: discord.Interaction, user: discord.Member):
 
     await user.timeout(None)
 
-    embed = discord.Embed(title="Unmute", color=discord.Color.green())
+    embed = discord.Embed(
+        title="🔊 Unmute",
+        color=discord.Color.green()
+    )
 
     embed.add_field(name="User", value=user.mention)
     embed.add_field(name="Moderator", value=interaction.user.mention)
@@ -312,7 +307,7 @@ async def unmute(interaction: discord.Interaction, user: discord.Member):
 
     await interaction.response.send_message("User unmuted")
 
-# ---------------- WARN ----------------
+# ---------------- WARNINGS ----------------
 
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warn")
@@ -323,7 +318,7 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
     warns = get_warnings(user.id)
 
     embed = discord.Embed(
-        title="Warning",
+        title="⚠️ Warning",
         color=discord.Color.orange()
     )
 
@@ -348,71 +343,46 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
         f"{user.mention} warned ({len(warns)})"
     )
 
-# ---------------- WARNINGS ----------------
 
+@app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warnings")
 async def warnings(interaction: discord.Interaction, user: discord.Member):
 
     data = get_warnings(user.id)
 
     if not data:
-
         await interaction.response.send_message("No warnings")
-
         return
 
     text = ""
 
-    for warn_id, mod, reason, time in data:
+    for w in data:
 
-        text += f"ID {warn_id} | {reason} | {time}\n"
+        text += f"ID {w[0]} | {w[3]}\n"
 
     await interaction.response.send_message(text[:1900])
 
-# ---------------- WARNINGS ALL ----------------
 
+@app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warnings_all")
 async def warnings_all(interaction: discord.Interaction):
 
-    cursor.execute("SELECT user_id, reason FROM warnings")
+    cursor.execute("SELECT * FROM warnings")
 
     data = cursor.fetchall()
 
-    text = ""
-
-    for user, reason in data:
-
-        member = interaction.guild.get_member(user)
-
-        name = member.mention if member else user
-
-        text += f"{name} | {reason}\n"
-
-    await interaction.response.send_message(text[:1900])
-
-# ---------------- WARNED USERS ----------------
-
-@bot.tree.command(name="warned_users")
-async def warned_users(interaction: discord.Interaction):
-
-    cursor.execute("SELECT user_id FROM warned_users")
-
-    data = cursor.fetchall()
+    if not data:
+        await interaction.response.send_message("No warnings")
+        return
 
     text = ""
 
-    for user_id, in data:
+    for w in data:
 
-        member = interaction.guild.get_member(user_id)
-
-        if member:
-            text += f"{member.mention}\n"
-        else:
-            text += f"{user_id}\n"
+        text += f"User {w[1]} | {w[3]}\n"
 
     await interaction.response.send_message(text[:1900])
 
-# ---------------- CLEAR WARNINGS ----------------
 
 @app_commands.checks.has_permissions(administrator=True)
 @bot.tree.command(name="clear_warnings")
@@ -420,9 +390,7 @@ async def clear_warnings(interaction: discord.Interaction, user: discord.Member)
 
     clear_warnings_db(user.id)
 
-    await interaction.response.send_message(
-        f"Warnings cleared for {user.mention}"
-    )
+    await interaction.response.send_message("Warnings cleared")
 
 # ---------------- START ----------------
 
