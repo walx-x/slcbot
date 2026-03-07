@@ -171,35 +171,121 @@ async def xp_remove(interaction:discord.Interaction,user:discord.Member,amount:i
         f"Removed {amount} XP from {user.mention} (Total {xp})"
     )
 
-@bot.tree.command(name="xp_check")
-async def xp_check(interaction:discord.Interaction,user:discord.Member=None):
+@bot.tree.command(name="xp_check", description="Check a user's XP")
+async def xp_check(interaction: discord.Interaction, user: discord.Member = None):
 
-    user=user or interaction.user
+    user = user or interaction.user
+    xp = get_xp(user.id)
 
-    xp=get_xp(user.id)
+    sorted_roles = sorted(XP_ROLES.items())
 
-    embed=discord.Embed(title=f"{user.name} XP")
+    current_rank = "🎖️ Unranked"
+    next_rank = None
+    next_xp = None
 
-    embed.add_field(name="XP",value=xp)
+    for req, role_id in sorted_roles:
+
+        role = interaction.guild.get_role(role_id)
+
+        if xp >= req:
+            current_rank = f"🏅 {role.name}"
+        else:
+            next_rank = role.name
+            next_xp = req
+            break
+
+    if next_xp:
+
+        progress = xp / next_xp
+        filled = int(progress * 20)
+
+        bar = "🟩" * filled + "⬜" * (20 - filled)
+
+        remaining = next_xp - xp
+        percent = round(progress * 100,1)
+
+    else:
+
+        bar = "🟩" * 20
+        remaining = 0
+        percent = 100
+
+    embed = discord.Embed(
+        title=f"⭐ {user.display_name}'s XP Profile",
+        color=discord.Color.blue()
+    )
+
+    embed.set_thumbnail(url=user.display_avatar.url)
+
+    embed.add_field(
+        name="🏅 Rank",
+        value=current_rank,
+        inline=True
+    )
+
+    embed.add_field(
+        name="✨ XP",
+        value=f"{xp} XP",
+        inline=True
+    )
+
+    if next_rank:
+
+        embed.add_field(
+            name="🚀 Next Rank",
+            value=f"{next_rank} ({remaining} XP remaining)",
+            inline=False
+        )
+
+    else:
+
+        embed.add_field(
+            name="🚀 Next Rank",
+            value="🏆 Max rank reached",
+            inline=False
+        )
+
+    embed.add_field(
+        name="📊 Progress",
+        value=f"{bar}\n**{percent}%**",
+        inline=False
+    )
 
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="xp_leaderboard")
-async def leaderboard(interaction:discord.Interaction):
+@bot.tree.command(name="xp_leaderboard", description="Show XP leaderboard")
+async def xp_leaderboard(interaction: discord.Interaction):
 
-    cursor.execute("SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10")
+    cursor.execute("SELECT user_id, xp FROM xp ORDER BY xp DESC LIMIT 10")
+    rows = cursor.fetchall()
 
-    data=cursor.fetchall()
+    if not rows:
+        await interaction.response.send_message("❌ No XP data found.")
+        return
 
-    embed=discord.Embed(title="XP Leaderboard")
+    embed = discord.Embed(
+        title="🏆 SLCartel XP Leaderboard",
+        color=discord.Color.gold()
+    )
 
-    for i,(uid,xp) in enumerate(data,1):
+    medals = ["🥇","🥈","🥉"]
 
-        member=interaction.guild.get_member(uid)
+    for idx,(user_id,xp) in enumerate(rows,1):
 
-        name=member.name if member else uid
+        member = interaction.guild.get_member(user_id)
 
-        embed.add_field(name=f"{i}. {name}",value=f"{xp} XP",inline=False)
+        name = member.name if member else f"User ID {user_id}"
+
+        if idx <=3:
+            prefix = medals[idx-1]
+        else:
+            prefix = f"#{idx}"
+
+        embed.add_field(
+            name=f"{prefix} {name}",
+            value=f"✨ {xp} XP",
+            inline=False
+        )
 
     await interaction.response.send_message(embed=embed)
 
@@ -341,4 +427,5 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
