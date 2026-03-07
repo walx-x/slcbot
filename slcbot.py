@@ -231,19 +231,21 @@ async def warn(interaction:discord.Interaction,user:discord.Member,reason:str="N
 
         await log.send(embed=embed)
 
-    if len(warns)>=AUTO_BAN_WARNINGS:
+    if len(warnings) >= AUTO_BAN_WARNINGS:
+    await user.ban(reason="Too many warnings")
+    await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
 
-        await user.ban(reason="Too many warnings")
+    await interaction.followup.send(
+        f"⚠️ {user.mention} has been **warned**.\n"
+        f"📊 Total warnings: **{len(warnings)}**\n"
+        f"🚫 User has been **auto-banned** for reaching the limit."
+    )
 
-        await interaction.followup.send(
-            f"{user.mention} warned and auto banned"
-        )
-
-    else:
-
-        await interaction.followup.send(
-            f"{user.mention} warned. Total {len(warns)}"
-        )
+else:
+    await interaction.followup.send(
+        f"⚠️ {user.mention} has been **warned**.\n"
+        f"📊 Total warnings: **{len(warnings)}**"
+    )
 
 # ---------------- WARNINGS ALL ----------------
 
@@ -339,3 +341,4 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
