@@ -119,12 +119,34 @@ async def send_warn_dm(user: discord.Member, reason: str, moderator: discord.Mem
 
 async def send_welcome_dm(member: discord.Member):
     try:
-        await member.send(
-            f"👋 Welcome in SLCartel Official server {member.name}!\n"
-            "First Verify with RoVer in ✅・verify\n"
-            "When you are ready to become a member go in 👥・become-member\n"
-            "When you have the clothes on take a screenshot and send it in a ticket 🎫・create-ticket"
+        embed = discord.Embed(
+            title=f"👋 Welcome to SLCartel, {member.name}!",
+            description="Follow these steps to join the cartel:",
+            color=discord.Color.blue()
         )
+
+        embed.add_field(
+            name="1️⃣ Verify",
+            value="Go to **✅・verify** and verify with **RoVer**",
+            inline=False
+        )
+
+        embed.add_field(
+            name="2️⃣ Become a Member",
+            value="After verifying, go to **👥・become-member**",
+            inline=False
+        )
+
+        embed.add_field(
+            name="3️⃣ Get Approved",
+            value="Wear the cartel clothes, take a screenshot and send it in **🎫・create-ticket**",
+            inline=False
+        )
+
+        embed.set_footer(text="SLCartel Official Server")
+
+        await member.send(embed=embed)
+
     except Exception:
         pass
 
@@ -338,6 +360,7 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
