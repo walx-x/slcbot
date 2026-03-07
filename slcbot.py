@@ -231,35 +231,34 @@ async def unmute(interaction: discord.Interaction, user: discord.Member):
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warn", description="Warn a user")
 async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+
+    await interaction.response.defer()
+
     add_warning(user.id, interaction.user.id, reason)
     warnings = get_warnings(user.id)
 
-    # --- Modlog embed ---
     embed = discord.Embed(title="⚠️ Warning", color=discord.Color.orange())
-    embed.add_field(name="User", value=user.mention, inline=True)
-    embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+    embed.add_field(name="User", value=user.mention)
+    embed.add_field(name="Moderator", value=interaction.user.mention)
     embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="Total Warnings", value=str(len(warnings)), inline=False)
+    embed.add_field(name="Total Warnings", value=str(len(warnings)))
     embed.set_footer(text=f"Oggi alle {interaction.created_at.strftime('%H:%M')}")
 
-    # Send to modlog channel
     if LOG_CHANNEL_ID:
         channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if channel:
             await channel.send(embed=embed)
 
-    # DM the warned user
     await send_warn_dm(user, reason, interaction.user)
 
-    # Risposta all’interaction (solo una volta!)
     if len(warnings) >= AUTO_BAN_WARNINGS:
         await user.ban(reason="Too many warnings")
         await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⚠️ {user.mention} warned and auto-banned (limit reached)."
         )
     else:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⚠️ {user.mention} warned.\nTotal warnings: {len(warnings)}"
         )
 
@@ -339,6 +338,7 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
