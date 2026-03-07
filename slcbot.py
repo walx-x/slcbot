@@ -121,9 +121,9 @@ async def send_welcome_dm(member: discord.Member):
     try:
         await member.send(
             f"👋 Benvenuto {member.name}!\n"
-            "Per verificarti usa ✅・verify\n"
-            "Per diventare membro usa 👥・become-member\n"
-            "Per aprire un ticket usa 🎫・create-ticket"
+            "First Verify with RoVer in ✅・verify\n"
+            "When you are ready to become a member go in 👥・become-member\n"
+            "When you have the clothes on take a screenshot and send it in a ticket 🎫・create-ticket"
         )
     except Exception:
         pass
@@ -339,6 +339,7 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
