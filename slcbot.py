@@ -120,7 +120,7 @@ async def send_warn_dm(user: discord.Member, reason: str, moderator: discord.Mem
 async def send_welcome_dm(member: discord.Member):
     try:
         await member.send(
-            f"👋 Benvenuto {member.name}!\n"
+            f"👋 Welcome in SLCartel Official server {member.name}!\n"
             "First Verify with RoVer in ✅・verify\n"
             "When you are ready to become a member go in 👥・become-member\n"
             "When you have the clothes on take a screenshot and send it in a ticket 🎫・create-ticket"
@@ -338,6 +338,7 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- START ----------------
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
