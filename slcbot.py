@@ -292,46 +292,47 @@ async def xp_leaderboard(interaction: discord.Interaction):
 # ---------------- WARN ----------------
 
 @app_commands.checks.has_permissions(moderate_members=True)
-@bot.tree.command(name="warn")
-async def warn(interaction:discord.Interaction,user:discord.Member,reason:str="No reason"):
+@bot.tree.command(name="warn", description="Warn a user")
+async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
 
+    # Defer response
     await interaction.response.defer()
 
-    add_warning(user.id,interaction.user.id,reason)
+    # Aggiungi warning al database
+    add_warning(user.id, interaction.user.id, reason)
+    warnings = get_warnings(user.id)
 
-    warns=get_warnings(user.id)
+    # Embed per modlog
+    embed = discord.Embed(title="⚠️ Warning", color=discord.Color.orange())
+    embed.add_field(name="User", value=user.mention)
+    embed.add_field(name="Moderator", value=interaction.user.mention)
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Total Warnings", value=str(len(warnings)))
+    embed.set_footer(text=f"Oggi alle {interaction.created_at.strftime('%H:%M')}")
 
-    embed=discord.Embed(title="⚠️ Warning",color=discord.Color.orange())
+    # Invia su canale log
+    if LOG_CHANNEL_ID:
+        channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if channel:
+            await channel.send(embed=embed)
 
-    embed.add_field(name="User",value=user.mention)
+    # DM all'utente
+    await send_warn_dm(user, reason, interaction.user)
 
-    embed.add_field(name="Moderator",value=interaction.user.mention)
-
-    embed.add_field(name="Reason",value=reason,inline=False)
-
-    embed.add_field(name="Total warnings",value=len(warns))
-
-    log=interaction.guild.get_channel(LOG_CHANNEL_ID)
-
-    if log:
-
-        await log.send(embed=embed)
-
+    # Controlla se supera il limite
     if len(warnings) >= AUTO_BAN_WARNINGS:
-    await user.ban(reason="Too many warnings")
-    await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
-
-    await interaction.followup.send(
-        f"⚠️ {user.mention} has been **warned**.\n"
-        f"📊 Total warnings: **{len(warnings)}**\n"
-        f"🚫 User has been **auto-banned** for reaching the limit."
-    )
-
-else:
-    await interaction.followup.send(
-        f"⚠️ {user.mention} has been **warned**.\n"
-        f"📊 Total warnings: **{len(warnings)}**"
-    )
+        await user.ban(reason="Too many warnings")
+        await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
+        await interaction.followup.send(
+            f"⚠️ {user.mention} has been **warned**.\n"
+            f"📊 Total warnings: **{len(warnings)}**\n"
+            f"🚫 User has been **auto-banned** for reaching the limit."
+        )
+    else:
+        await interaction.followup.send(
+            f"⚠️ {user.mention} has been **warned**.\n"
+            f"📊 Total warnings: **{len(warnings)}**"
+        )
 
 # ---------------- WARNINGS ALL ----------------
 
@@ -427,5 +428,6 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
