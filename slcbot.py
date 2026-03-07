@@ -289,8 +289,9 @@ async def xp_leaderboard(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-# ---------------- WARN ----------------
+# ----- WARN COMMANDS -----
 
+# ---------------- WARN ----------------
 @app_commands.checks.has_permissions(moderate_members=True)
 @bot.tree.command(name="warn", description="Warn a user")
 async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
@@ -334,41 +335,63 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
             f"📊 Total warnings: **{len(warnings)}**"
         )
 
-# ---------------- WARNINGS ALL ----------------
-
-@app_commands.checks.has_permissions(administrator=True)
-@bot.tree.command(name="warnings_all")
-async def warnings_all(interaction:discord.Interaction):
-
-    cursor.execute("""
-    SELECT user_id,moderator_id,reason,timestamp
-    FROM warnings
-    ORDER BY timestamp DESC
-    """)
-
-    data=cursor.fetchall()
-
+# ---------------- WARNINGS SINGLE USER ----------------
+@app_commands.checks.has_permissions(moderate_members=True)
+@bot.tree.command(name="warnings", description="Check warnings of a user")
+async def warnings_cmd(interaction: discord.Interaction, user: discord.Member):
+    data = get_warnings(user.id)
     if not data:
-
-        await interaction.response.send_message("No warnings")
-
+        await interaction.response.send_message(f"✅ {user.mention} has **no warnings**.")
         return
 
-    text=""
+    text = ""
+    for warn_id, mod_id, reason, timestamp in data:
+        moderator = interaction.guild.get_member(mod_id)
+        mod_name = moderator.name if moderator else f"User ID {mod_id}"
+        text += f"ID {warn_id} | Moderator: {mod_name} | Reason: {reason} | {timestamp}\n"
 
-    for uid,mid,reason,time in data:
+    # Discord non permette messaggi troppo lunghi
+    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+    await interaction.response.send_message(f"📄 Warnings for {user.mention}:")
+    for chunk in chunks:
+        await interaction.followup.send(chunk)
 
-        user=interaction.guild.get_member(uid)
+# ---------------- CLEAR WARNINGS ----------------
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="clear_warnings", description="Clear warnings of a user")
+async def clear_user_warnings(interaction: discord.Interaction, user: discord.Member):
+    clear_warnings(user.id)
+    await interaction.response.send_message(
+        f"🗑️ All warnings for {user.mention} have been **cleared** ✅"
+    )
 
-        mod=interaction.guild.get_member(mid)
+# ---------------- WARNINGS ALL ----------------
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="warnings_all", description="Show all warnings given to all users")
+async def warnings_all(interaction: discord.Interaction):
+    cursor.execute("""
+        SELECT user_id, moderator_id, reason, timestamp
+        FROM warnings
+        ORDER BY timestamp DESC
+    """)
+    data = cursor.fetchall()
 
-        uname=user.name if user else uid
+    if not data:
+        await interaction.response.send_message("✅ No warnings recorded.")
+        return
 
-        mname=mod.name if mod else mid
+    text = ""
+    for user_id, mod_id, reason, timestamp in data:
+        member = interaction.guild.get_member(user_id)
+        moderator = interaction.guild.get_member(mod_id)
+        user_name = member.name if member else f"User ID {user_id}"
+        mod_name = moderator.name if moderator else f"User ID {mod_id}"
+        text += f"{user_name} | Moderator: {mod_name} | Reason: {reason} | {timestamp}\n"
 
-        text+=f"{uname} | {mname} | {reason} | {time}\n"
-
-    await interaction.response.send_message(text[:2000])
+    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+    await interaction.response.send_message(f"📜 All Warnings (total {len(data)}):")
+    for chunk in chunks:
+        await interaction.followup.send(chunk)
 
 # ---------------- MODERATION ----------------
 
@@ -428,6 +451,7 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
 
