@@ -8,75 +8,98 @@ from datetime import timedelta
 
 load_dotenv()
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
+TOKEN=os.getenv("DISCORD_BOT_TOKEN")
+DATABASE_URL=os.getenv("DATABASE_URL")
 
-AUTO_BAN_WARNINGS = 3
-LOG_CHANNEL_ID = 1479152748598399046
+AUTO_BAN_WARNINGS=3
+LOG_CHANNEL_ID=1479152748598399046
 
-XP_ROLES = {
-    100: 1478412603557544128,
-    300: 1478412692082659529,
-    600: 1475526619132203161,
+XP_ROLES={
+100:1478412603557544128,
+300:1478412692082659529,
+600:1475526619132203161
 }
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents=discord.Intents.all()
+bot=commands.Bot(command_prefix="!",intents=intents)
 
 # ---------------- DATABASE ----------------
 
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
+conn=psycopg2.connect(DATABASE_URL)
+cursor=conn.cursor()
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS xp (
-    user_id BIGINT PRIMARY KEY,
-    xp INT
+CREATE TABLE IF NOT EXISTS xp(
+user_id BIGINT PRIMARY KEY,
+xp INT
 )
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS warnings (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT,
-    moderator_id BIGINT,
-    reason TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS warnings(
+id SERIAL PRIMARY KEY,
+user_id BIGINT,
+moderator_id BIGINT,
+reason TEXT,
+timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
 conn.commit()
 
+# ---------------- MODLOG ----------------
+
+async def send_modlog(guild,title,fields):
+
+    if not LOG_CHANNEL_ID:
+        return
+
+    channel=guild.get_channel(LOG_CHANNEL_ID)
+
+    if not channel:
+        return
+
+    embed=discord.Embed(title=title,color=discord.Color.orange())
+
+    for name,value in fields:
+        embed.add_field(name=name,value=value,inline=False)
+
+    await channel.send(embed=embed)
+
 # ---------------- XP FUNCTIONS ----------------
 
 def get_xp(user_id):
+
     cursor.execute("SELECT xp FROM xp WHERE user_id=%s",(user_id,))
-    data = cursor.fetchone()
+    data=cursor.fetchone()
+
     return data[0] if data else 0
 
 def set_xp(user_id,xp):
+
     cursor.execute("""
-    INSERT INTO xp (user_id,xp)
-    VALUES (%s,%s)
-    ON CONFLICT (user_id)
+    INSERT INTO xp(user_id,xp)
+    VALUES(%s,%s)
+    ON CONFLICT(user_id)
     DO UPDATE SET xp=%s
     """,(user_id,xp,xp))
+
     conn.commit()
 
 async def update_roles(member,xp):
 
     for req,role_id in XP_ROLES.items():
 
-        role = member.guild.get_role(role_id)
+        role=member.guild.get_role(role_id)
 
         if not role:
             continue
 
-        if xp >= req and role not in member.roles:
+        if xp>=req and role not in member.roles:
 
             await member.add_roles(role)
 
-        elif xp < req and role in member.roles:
+        elif xp<req and role in member.roles:
 
             await member.remove_roles(role)
 
@@ -85,8 +108,8 @@ async def update_roles(member,xp):
 def add_warning(user,mod,reason):
 
     cursor.execute("""
-    INSERT INTO warnings (user_id,moderator_id,reason)
-    VALUES (%s,%s,%s)
+    INSERT INTO warnings(user_id,moderator_id,reason)
+    VALUES(%s,%s,%s)
     """,(user,mod,reason))
 
     conn.commit()
@@ -94,11 +117,38 @@ def add_warning(user,mod,reason):
 def get_warnings(user):
 
     cursor.execute("""
-    SELECT id,reason,timestamp FROM warnings
+    SELECT id,moderator_id,reason,timestamp
+    FROM warnings
     WHERE user_id=%s
     """,(user,))
 
     return cursor.fetchall()
+
+def clear_warnings(user):
+
+    cursor.execute("""
+    DELETE FROM warnings
+    WHERE user_id=%s
+    """,(user,))
+
+    conn.commit()
+
+async def send_warn_dm(user,reason,moderator):
+
+    try:
+
+        embed=discord.Embed(
+        title="⚠️ You received a warning",
+        color=discord.Color.orange()
+        )
+
+        embed.add_field(name="Reason",value=reason)
+        embed.add_field(name="Moderator",value=str(moderator))
+
+        await user.send(embed=embed)
+
+    except:
+        pass
 
 # ---------------- EVENTS ----------------
 
@@ -112,28 +162,28 @@ async def on_ready():
 @bot.event
 async def on_member_join(member):
 
-    embed = discord.Embed(
-        title=f"👋 Welcome {member.name}",
-        description="Follow these steps to join SLCartel",
-        color=discord.Color.blue()
+    embed=discord.Embed(
+    title=f"👋 Welcome {member.name}",
+    description="Follow these steps to join SLCartel",
+    color=discord.Color.blue()
     )
 
     embed.add_field(
-        name="1️⃣ Verify",
-        value="Go to **✅・verify** and verify with RoVer",
-        inline=False
+    name="1️⃣ Verify",
+    value="Go to **✅・verify** and verify with RoVer",
+    inline=False
     )
 
     embed.add_field(
-        name="2️⃣ Become Member",
-        value="Go to **👥・become-member**",
-        inline=False
+    name="2️⃣ Become Member",
+    value="Go to **👥・become-member**",
+    inline=False
     )
 
     embed.add_field(
-        name="3️⃣ Send Screenshot",
-        value="Send screenshot in **🎫・create-ticket**",
-        inline=False
+    name="3️⃣ Send Screenshot",
+    value="Send screenshot in **🎫・create-ticket**",
+    inline=False
     )
 
     try:
@@ -147,14 +197,13 @@ async def on_member_join(member):
 @bot.tree.command(name="xp_add")
 async def xp_add(interaction:discord.Interaction,user:discord.Member,amount:int):
 
-    xp = get_xp(user.id)+amount
-
+    xp=get_xp(user.id)+amount
     set_xp(user.id,xp)
 
     await update_roles(user,xp)
 
     await interaction.response.send_message(
-        f"Added {amount} XP to {user.mention} (Total {xp})"
+    f"Added {amount} XP to {user.mention} (Total {xp})"
     )
 
 @app_commands.checks.has_permissions(manage_roles=True)
@@ -168,230 +217,219 @@ async def xp_remove(interaction:discord.Interaction,user:discord.Member,amount:i
     await update_roles(user,xp)
 
     await interaction.response.send_message(
-        f"Removed {amount} XP from {user.mention} (Total {xp})"
+    f"Removed {amount} XP from {user.mention} (Total {xp})"
     )
 
-@bot.tree.command(name="xp_check", description="Check a user's XP")
-async def xp_check(interaction: discord.Interaction, user: discord.Member = None):
+@bot.tree.command(name="xp_check")
+async def xp_check(interaction:discord.Interaction,user:discord.Member=None):
 
-    user = user or interaction.user
-    xp = get_xp(user.id)
+    user=user or interaction.user
+    xp=get_xp(user.id)
 
-    sorted_roles = sorted(XP_ROLES.items())
+    sorted_roles=sorted(XP_ROLES.items())
 
-    current_rank = "🎖️ Unranked"
-    next_rank = None
-    next_xp = None
+    current_rank="🎖️ Unranked"
+    next_rank=None
+    next_xp=None
 
-    for req, role_id in sorted_roles:
+    for req,role_id in sorted_roles:
 
-        role = interaction.guild.get_role(role_id)
+        role=interaction.guild.get_role(role_id)
 
-        if xp >= req:
-            current_rank = f"🏅 {role.name}"
+        if xp>=req:
+            current_rank=f"🏅 {role.name}"
         else:
-            next_rank = role.name
-            next_xp = req
+            next_rank=role.name
+            next_xp=req
             break
 
     if next_xp:
 
-        progress = xp / next_xp
-        filled = int(progress * 20)
+        progress=xp/next_xp
+        filled=int(progress*20)
 
-        bar = "🟩" * filled + "⬜" * (20 - filled)
+        bar="🟩"*filled+"⬜"*(20-filled)
 
-        remaining = next_xp - xp
-        percent = round(progress * 100,1)
+        percent=round(progress*100,1)
 
     else:
 
-        bar = "🟩" * 20
-        remaining = 0
-        percent = 100
+        bar="🟩"*20
+        percent=100
 
-    embed = discord.Embed(
-        title=f"⭐ {user.display_name}'s XP Profile",
-        color=discord.Color.blue()
+    embed=discord.Embed(
+    title=f"⭐ {user.display_name}'s XP Profile",
+    color=discord.Color.blue()
     )
 
     embed.set_thumbnail(url=user.display_avatar.url)
 
+    embed.add_field(name="🏅 Rank",value=current_rank)
+    embed.add_field(name="✨ XP",value=f"{xp} XP")
+
     embed.add_field(
-        name="🏅 Rank",
-        value=current_rank,
-        inline=True
+    name="📊 Progress",
+    value=f"{bar}\n{percent}%"
     )
 
-    embed.add_field(
-        name="✨ XP",
-        value=f"{xp} XP",
-        inline=True
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="xp_leaderboard")
+async def xp_leaderboard(interaction:discord.Interaction):
+
+    cursor.execute("SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10")
+    rows=cursor.fetchall()
+
+    embed=discord.Embed(
+    title="🏆 SLCartel XP Leaderboard",
+    color=discord.Color.gold()
     )
 
-    if next_rank:
+    medals=["🥇","🥈","🥉"]
+
+    for idx,(uid,xp) in enumerate(rows,1):
+
+        member=interaction.guild.get_member(uid)
+        name=member.name if member else uid
+
+        prefix=medals[idx-1] if idx<=3 else f"#{idx}"
 
         embed.add_field(
-            name="🚀 Next Rank",
-            value=f"{next_rank} ({remaining} XP remaining)",
-            inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="🚀 Next Rank",
-            value="🏆 Max rank reached",
-            inline=False
-        )
-
-    embed.add_field(
-        name="📊 Progress",
-        value=f"{bar}\n**{percent}%**",
+        name=f"{prefix} {name}",
+        value=f"✨ {xp} XP",
         inline=False
-    )
-
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="xp_leaderboard", description="Show XP leaderboard")
-async def xp_leaderboard(interaction: discord.Interaction):
-
-    cursor.execute("SELECT user_id, xp FROM xp ORDER BY xp DESC LIMIT 10")
-    rows = cursor.fetchall()
-
-    if not rows:
-        await interaction.response.send_message("❌ No XP data found.")
-        return
-
-    embed = discord.Embed(
-        title="🏆 SLCartel XP Leaderboard",
-        color=discord.Color.gold()
-    )
-
-    medals = ["🥇","🥈","🥉"]
-
-    for idx,(user_id,xp) in enumerate(rows,1):
-
-        member = interaction.guild.get_member(user_id)
-
-        name = member.name if member else f"User ID {user_id}"
-
-        if idx <=3:
-            prefix = medals[idx-1]
-        else:
-            prefix = f"#{idx}"
-
-        embed.add_field(
-            name=f"{prefix} {name}",
-            value=f"✨ {xp} XP",
-            inline=False
         )
 
     await interaction.response.send_message(embed=embed)
 
-# ----- WARN COMMANDS -----
+# ---------------- WARN COMMANDS ----------------
 
-# ---------------- WARN ----------------
 @app_commands.checks.has_permissions(moderate_members=True)
-@bot.tree.command(name="warn", description="Warn a user")
-async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+@bot.tree.command(name="warn")
+async def warn(interaction:discord.Interaction,user:discord.Member,reason:str="No reason"):
 
-    # Defer response
     await interaction.response.defer()
 
-    # Aggiungi warning al database
-    add_warning(user.id, interaction.user.id, reason)
-    warnings = get_warnings(user.id)
+    add_warning(user.id,interaction.user.id,reason)
 
-    # Embed per modlog
-    embed = discord.Embed(title="⚠️ Warning", color=discord.Color.orange())
-    embed.add_field(name="User", value=user.mention)
-    embed.add_field(name="Moderator", value=interaction.user.mention)
-    embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="Total Warnings", value=str(len(warnings)))
-    embed.set_footer(text=f"Oggi alle {interaction.created_at.strftime('%H:%M')}")
+    warnings=get_warnings(user.id)
 
-    # Invia su canale log
-    if LOG_CHANNEL_ID:
-        channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if channel:
-            await channel.send(embed=embed)
+    await send_warn_dm(user,reason,interaction.user)
 
-    # DM all'utente
-    await send_warn_dm(user, reason, interaction.user)
-
-    # Controlla se supera il limite
-    if len(warnings) >= AUTO_BAN_WARNINGS:
-        await user.ban(reason="Too many warnings")
-        await send_log(interaction.guild, f"🔨 {user} auto-banned (warnings limit reached)")
-        await interaction.followup.send(
-            f"⚠️ {user.mention} has been **warned**.\n"
-            f"📊 Total warnings: **{len(warnings)}**\n"
-            f"🚫 User has been **auto-banned** for reaching the limit."
-        )
-    else:
-        await interaction.followup.send(
-            f"⚠️ {user.mention} has been **warned**.\n"
-            f"📊 Total warnings: **{len(warnings)}**"
-        )
-
-# ---------------- WARNINGS SINGLE USER ----------------
-@app_commands.checks.has_permissions(moderate_members=True)
-@bot.tree.command(name="warnings", description="Check warnings of a user")
-async def warnings_cmd(interaction: discord.Interaction, user: discord.Member):
-    data = get_warnings(user.id)
-    if not data:
-        await interaction.response.send_message(f"✅ {user.mention} has **no warnings**.")
-        return
-
-    text = ""
-    for warn_id, mod_id, reason, timestamp in data:
-        moderator = interaction.guild.get_member(mod_id)
-        mod_name = moderator.name if moderator else f"User ID {mod_id}"
-        text += f"ID {warn_id} | Moderator: {mod_name} | Reason: {reason} | {timestamp}\n"
-
-    # Discord non permette messaggi troppo lunghi
-    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
-    await interaction.response.send_message(f"📄 Warnings for {user.mention}:")
-    for chunk in chunks:
-        await interaction.followup.send(chunk)
-
-# ---------------- CLEAR WARNINGS ----------------
-@app_commands.checks.has_permissions(administrator=True)
-@bot.tree.command(name="clear_warnings", description="Clear warnings of a user")
-async def clear_user_warnings(interaction: discord.Interaction, user: discord.Member):
-    clear_warnings(user.id)
-    await interaction.response.send_message(
-        f"🗑️ All warnings for {user.mention} have been **cleared** ✅"
+    await send_modlog(
+    interaction.guild,
+    "⚠️ Warning",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention),
+    ("Reason",reason),
+    ("Total warnings",str(len(warnings)))
+    ]
     )
 
-# ---------------- WARNINGS ALL ----------------
-@app_commands.checks.has_permissions(administrator=True)
-@bot.tree.command(name="warnings_all", description="Show all warnings given to all users")
-async def warnings_all(interaction: discord.Interaction):
-    cursor.execute("""
-        SELECT user_id, moderator_id, reason, timestamp
-        FROM warnings
-        ORDER BY timestamp DESC
-    """)
-    data = cursor.fetchall()
+    if len(warnings)>=AUTO_BAN_WARNINGS:
+
+        await user.ban(reason="Too many warnings")
+
+        await interaction.followup.send(
+        f"{user.mention} warned and auto banned"
+        )
+
+    else:
+
+        await interaction.followup.send(
+        f"{user.mention} warned ({len(warnings)} total)"
+        )
+
+# ---------------- WARNINGS USER ----------------
+
+@app_commands.checks.has_permissions(moderate_members=True)
+@bot.tree.command(name="warnings")
+async def warnings(interaction:discord.Interaction,user:discord.Member):
+
+    data=get_warnings(user.id)
 
     if not data:
-        await interaction.response.send_message("✅ No warnings recorded.")
+
+        await interaction.response.send_message(
+        f"{user.mention} has no warnings"
+        )
+
         return
 
-    text = ""
-    for user_id, mod_id, reason, timestamp in data:
-        member = interaction.guild.get_member(user_id)
-        moderator = interaction.guild.get_member(mod_id)
-        user_name = member.name if member else f"User ID {user_id}"
-        mod_name = moderator.name if moderator else f"User ID {mod_id}"
-        text += f"{user_name} | Moderator: {mod_name} | Reason: {reason} | {timestamp}\n"
+    embed=discord.Embed(
+    title=f"⚠️ Warnings for {user}",
+    color=discord.Color.orange()
+    )
 
-    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
-    await interaction.response.send_message(f"📜 All Warnings (total {len(data)}):")
-    for chunk in chunks:
-        await interaction.followup.send(chunk)
+    for wid,mod,reason,time in data:
+
+        moderator=interaction.guild.get_member(mod)
+        mod_name=moderator.name if moderator else mod
+
+        embed.add_field(
+        name=f"Warning {wid}",
+        value=f"Moderator: {mod_name}\nReason: {reason}",
+        inline=False
+        )
+
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- WARNINGS ALL ----------------
+
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="warnings_all")
+async def warnings_all(interaction:discord.Interaction):
+
+    cursor.execute("""
+    SELECT user_id,moderator_id,reason,timestamp
+    FROM warnings
+    ORDER BY timestamp DESC
+    """)
+
+    data=cursor.fetchall()
+
+    embed=discord.Embed(
+    title="📜 All Warnings",
+    color=discord.Color.orange()
+    )
+
+    for uid,mid,reason,time in data:
+
+        user=interaction.guild.get_member(uid)
+        mod=interaction.guild.get_member(mid)
+
+        uname=user.name if user else uid
+        mname=mod.name if mod else mid
+
+        embed.add_field(
+        name=uname,
+        value=f"Moderator: {mname}\nReason: {reason}",
+        inline=False
+        )
+
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- CLEAR WARNINGS ----------------
+
+@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="clear_warnings")
+async def clear_user_warnings(interaction:discord.Interaction,user:discord.Member):
+
+    clear_warnings(user.id)
+
+    await send_modlog(
+    interaction.guild,
+    "🗑️ Warnings Cleared",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention)
+    ]
+    )
+
+    await interaction.response.send_message(
+    f"Warnings cleared for {user.mention}"
+    )
 
 # ---------------- MODERATION ----------------
 
@@ -401,9 +439,16 @@ async def ban(interaction:discord.Interaction,user:discord.Member):
 
     await user.ban()
 
-    await interaction.response.send_message(
-        f"{user.mention} banned"
+    await send_modlog(
+    interaction.guild,
+    "🔨 Ban",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention)
+    ]
     )
+
+    await interaction.response.send_message(f"{user.mention} banned")
 
 @bot.tree.command(name="kick")
 @app_commands.checks.has_permissions(kick_members=True)
@@ -411,9 +456,16 @@ async def kick(interaction:discord.Interaction,user:discord.Member):
 
     await user.kick()
 
-    await interaction.response.send_message(
-        f"{user.mention} kicked"
+    await send_modlog(
+    interaction.guild,
+    "👢 Kick",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention)
+    ]
     )
+
+    await interaction.response.send_message(f"{user.mention} kicked")
 
 @bot.tree.command(name="mute")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -421,8 +473,18 @@ async def mute(interaction:discord.Interaction,user:discord.Member,minutes:int):
 
     await user.timeout(timedelta(minutes=minutes))
 
+    await send_modlog(
+    interaction.guild,
+    "🔇 Mute",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention),
+    ("Duration",f"{minutes} minutes")
+    ]
+    )
+
     await interaction.response.send_message(
-        f"{user.mention} muted {minutes} minutes"
+    f"{user.mention} muted {minutes} minutes"
     )
 
 @bot.tree.command(name="unmute")
@@ -431,8 +493,17 @@ async def unmute(interaction:discord.Interaction,user:discord.Member):
 
     await user.timeout(None)
 
+    await send_modlog(
+    interaction.guild,
+    "🔊 Unmute",
+    [
+    ("User",user.mention),
+    ("Moderator",interaction.user.mention)
+    ]
+    )
+
     await interaction.response.send_message(
-        f"{user.mention} unmuted"
+    f"{user.mention} unmuted"
     )
 
 # ---------------- CLEAR ----------------
@@ -443,15 +514,21 @@ async def clear(interaction:discord.Interaction,amount:int):
 
     deleted=await interaction.channel.purge(limit=amount)
 
+    await send_modlog(
+    interaction.guild,
+    "🧹 Messages Cleared",
+    [
+    ("Moderator",interaction.user.mention),
+    ("Channel",interaction.channel.mention),
+    ("Amount",str(len(deleted)))
+    ]
+    )
+
     await interaction.response.send_message(
-        f"Deleted {len(deleted)} messages",
-        ephemeral=True
+    f"Deleted {len(deleted)} messages",
+    ephemeral=True
     )
 
 # ---------------- START ----------------
 
 bot.run(TOKEN)
-
-
-
-
