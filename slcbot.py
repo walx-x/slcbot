@@ -1,6 +1,8 @@
 import os
+import asyncio
 import discord
 import psycopg2
+import asyncio
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
@@ -605,6 +607,16 @@ async def dm(
 
         await user.send(embed=embed)
 
+        await send_modlog(
+            interaction.guild,
+            "📩 Staff DM Sent",
+            [
+                ("User", f"{user.mention} ({user.id})"),
+                ("Moderator", interaction.user.mention),
+                ("Message", message)
+            ]
+        )
+
         await interaction.response.send_message(
             f"✅ DM sent to {user.mention}",
             ephemeral=True
@@ -613,13 +625,64 @@ async def dm(
     except:
 
         await interaction.response.send_message(
-            f"❌ Couldn't send DM to {user.mention} (DMs closed)",
+            f"❌ Couldn't send DM to {user.mention}",
             ephemeral=True
         )
+        
+@bot.tree.command(name="dm_all", description="Send a DM to all members")
+@app_commands.checks.has_permissions(administrator=True)
+async def dm_all(interaction: discord.Interaction, message: str):
+
+    await interaction.response.defer(ephemeral=True)
+
+    sent = 0
+    failed = 0
+
+    embed = discord.Embed(
+        title="📢 Server Message",
+        description=message,
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(name="Server", value=interaction.guild.name)
+    embed.set_footer(text=f"Sent by {interaction.user}")
+
+    for member in interaction.guild.members:
+
+        if member.bot:
+            continue
+
+        try:
+
+            await member.send(embed=embed)
+            sent += 1
+
+            await asyncio.sleep(1)  # anti spam protection
+
+        except:
+
+            failed += 1
+
+    await send_modlog(
+        interaction.guild,
+        "📢 Mass DM Sent",
+        [
+            ("Moderator", interaction.user.mention),
+            ("Message", message),
+            ("Sent", str(sent)),
+            ("Failed", str(failed))
+        ]
+    )
+
+    await interaction.followup.send(
+        f"📢 Mass DM finished\n✅ Sent: {sent}\n❌ Failed: {failed}",
+        ephemeral=True
+    )
 
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
 
