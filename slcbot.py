@@ -588,11 +588,9 @@ async def clear(interaction:discord.Interaction,amount:int):
 
 @bot.tree.command(name="dm", description="Send a DM to a user")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def dm(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    message: str
-):
+async def dm(interaction: discord.Interaction, user: discord.Member, message: str):
+
+    await interaction.response.defer(ephemeral=True)
 
     try:
 
@@ -617,15 +615,15 @@ async def dm(
             ]
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ DM sent to {user.mention}",
             ephemeral=True
         )
 
-    except:
+    except Exception:
 
-        await interaction.response.send_message(
-            f"❌ Couldn't send DM to {user.mention}",
+        await interaction.followup.send(
+            f"❌ Couldn't send DM to {user.mention} (DMs closed)",
             ephemeral=True
         )
         
@@ -682,6 +680,7 @@ async def dm_all(interaction: discord.Interaction, message: str):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
 
