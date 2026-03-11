@@ -423,61 +423,103 @@ async def warnings_all(interaction:discord.Interaction):
 
 # ---------------- CLEAR WARNINGS ----------------
 
-@app_commands.checks.has_permissions(administrator=True)
 @bot.tree.command(name="clear_warnings")
-async def clear_user_warnings(interaction:discord.Interaction,user:discord.Member):
+@app_commands.checks.has_permissions(administrator=True)
+async def clear_user_warnings(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    reason: str
+):
 
     clear_warnings(user.id)
 
     await send_modlog(
-    interaction.guild,
-    "🗑️ Warnings Cleared",
-    [
-    ("User",user.mention),
-    ("Moderator",interaction.user.mention)
-    ]
+        interaction.guild,
+        "🗑️ Warnings Cleared",
+        [
+            ("User", user.mention),
+            ("Moderator", interaction.user.mention),
+            ("Reason", reason)
+        ]
     )
 
     await interaction.response.send_message(
-    f"Warnings cleared for {user.mention}"
+        f"Warnings cleared for {user.mention}\nReason: {reason}"
     )
 
 # ---------------- MODERATION ----------------
 
 @bot.tree.command(name="ban")
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban(interaction:discord.Interaction,user:discord.Member):
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str):
 
-    await user.ban()
+    try:
+
+        embed = discord.Embed(
+            title="🔨 You have been banned",
+            color=discord.Color.red()
+        )
+
+        embed.add_field(name="Server", value=interaction.guild.name)
+        embed.add_field(name="Moderator", value=str(interaction.user))
+        embed.add_field(name="Reason", value=reason)
+
+        await user.send(embed=embed)
+
+    except:
+        pass
+
+    await user.ban(reason=reason)
 
     await send_modlog(
-    interaction.guild,
-    "🔨 Ban",
-    [
-    ("User",user.mention),
-    ("Moderator",interaction.user.mention)
-    ]
+        interaction.guild,
+        "🔨 Ban",
+        [
+            ("User", user.mention),
+            ("Moderator", interaction.user.mention),
+            ("Reason", reason)
+        ]
     )
 
-    await interaction.response.send_message(f"{user.mention} banned")
+    await interaction.response.send_message(
+        f"{user.mention} banned\nReason: {reason}"
+    )
 
 @bot.tree.command(name="kick")
 @app_commands.checks.has_permissions(kick_members=True)
-async def kick(interaction:discord.Interaction,user:discord.Member):
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str):
 
-    await user.kick()
+    try:
+
+        embed = discord.Embed(
+            title="👢 You have been kicked",
+            color=discord.Color.orange()
+        )
+
+        embed.add_field(name="Server", value=interaction.guild.name)
+        embed.add_field(name="Moderator", value=str(interaction.user))
+        embed.add_field(name="Reason", value=reason)
+
+        await user.send(embed=embed)
+
+    except:
+        pass
+
+    await user.kick(reason=reason)
 
     await send_modlog(
-    interaction.guild,
-    "👢 Kick",
-    [
-    ("User",user.mention),
-    ("Moderator",interaction.user.mention)
-    ]
+        interaction.guild,
+        "👢 Kick",
+        [
+            ("User", user.mention),
+            ("Moderator", interaction.user.mention),
+            ("Reason", reason)
+        ]
     )
 
-    await interaction.response.send_message(f"{user.mention} kicked")
-
+    await interaction.response.send_message(
+        f"{user.mention} kicked\nReason: {reason}"
+    )
 @bot.tree.command(name="mute")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def mute(interaction:discord.Interaction,user:discord.Member,minutes:int):
@@ -540,9 +582,45 @@ async def clear(interaction:discord.Interaction,amount:int):
     ephemeral=True
     )
 
+# ---------------- DM COMMAND ----------------
+
+@bot.tree.command(name="dm", description="Send a DM to a user")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def dm(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    message: str
+):
+
+    try:
+
+        embed = discord.Embed(
+            title="📩 Message from the staff",
+            description=message,
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(name="Server", value=interaction.guild.name)
+        embed.set_footer(text=f"Sent by {interaction.user}")
+
+        await user.send(embed=embed)
+
+        await interaction.response.send_message(
+            f"✅ DM sent to {user.mention}",
+            ephemeral=True
+        )
+
+    except:
+
+        await interaction.response.send_message(
+            f"❌ Couldn't send DM to {user.mention} (DMs closed)",
+            ephemeral=True
+        )
+
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
 
