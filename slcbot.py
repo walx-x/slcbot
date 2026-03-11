@@ -243,19 +243,30 @@ async def xp_check(interaction:discord.Interaction,user:discord.Member=None):
             next_xp=req
             break
 
-    if next_xp:
+current_req = 0
 
-        progress=xp/next_xp
-        filled=int(progress*20)
-
-        bar="🟩"*filled+"⬜"*(20-filled)
-
-        percent=round(progress*100,1)
-
+for req, role_id in sorted_roles:
+    if xp >= req:
+        current_req = req
     else:
+        next_xp = req
+        break
 
-        bar="🟩"*20
-        percent=100
+if next_xp:
+
+    progress = (xp - current_req) / (next_xp - current_req)
+    progress = max(0, min(progress, 1))
+
+    filled = int(progress * 20)
+
+    bar = "🟩" * filled + "⬜" * (20 - filled)
+
+    percent = round(progress * 100, 1)
+
+else:
+
+    bar = "🟩" * 20
+    percent = 100
 
     embed=discord.Embed(
     title=f"⭐ {user.display_name}'s XP Profile",
@@ -532,4 +543,5 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
