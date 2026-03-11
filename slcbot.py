@@ -221,67 +221,67 @@ async def xp_remove(interaction:discord.Interaction,user:discord.Member,amount:i
     )
 
 @bot.tree.command(name="xp_check")
-async def xp_check(interaction:discord.Interaction,user:discord.Member=None):
+async def xp_check(interaction: discord.Interaction, user: discord.Member=None):
 
-    user=user or interaction.user
-    xp=get_xp(user.id)
+    user = user or interaction.user
+    xp = get_xp(user.id)
 
-    sorted_roles=sorted(XP_ROLES.items())
+    sorted_roles = sorted(XP_ROLES.items())
 
-    current_rank="🎖️ Unranked"
-    next_rank=None
-    next_xp=None
+    current_rank = "🎖️ Unranked"
+    next_rank = None
+    next_xp = None
+    current_req = 0
 
-    for req,role_id in sorted_roles:
+    for req, role_id in sorted_roles:
 
-        role=interaction.guild.get_role(role_id)
+        role = interaction.guild.get_role(role_id)
 
-        if xp>=req:
-            current_rank=f"🏅 {role.name}"
+        if xp >= req:
+            current_rank = f"🏅 {role.name}"
+            current_req = req
         else:
-            next_rank=role.name
-            next_xp=req
+            next_rank = role.name
+            next_xp = req
             break
 
-current_req = 0
+    if next_xp:
 
-for req, role_id in sorted_roles:
-    if xp >= req:
-        current_req = req
+        progress = (xp - current_req) / (next_xp - current_req)
+        progress = max(0, min(progress, 1))
+
+        filled = int(progress * 20)
+
+        bar = "▰" * filled + "▱" * (20 - filled)
+
+        percent = round(progress * 100, 1)
+
     else:
-        next_xp = req
-        break
 
-if next_xp:
+        bar = "▰" * 20
+        percent = 100
 
-    progress = (xp - current_req) / (next_xp - current_req)
-    progress = max(0, min(progress, 1))
-
-    filled = int(progress * 20)
-
-    bar = "🟩" * filled + "⬜" * (20 - filled)
-
-    percent = round(progress * 100, 1)
-
-else:
-
-    bar = "🟩" * 20
-    percent = 100
-
-    embed=discord.Embed(
-    title=f"⭐ {user.display_name}'s XP Profile",
-    color=discord.Color.blue()
+    embed = discord.Embed(
+        title=f"⭐ {user.display_name}'s XP Profile",
+        color=discord.Color.blue()
     )
 
     embed.set_thumbnail(url=user.display_avatar.url)
 
-    embed.add_field(name="🏅 Rank",value=current_rank)
-    embed.add_field(name="✨ XP",value=f"{xp} XP")
+    embed.add_field(name="🏅 Rank", value=current_rank)
+    embed.add_field(name="✨ XP", value=f"{xp} XP")
 
     embed.add_field(
-    name="📊 Progress",
-    value=f"{bar}\n{percent}%"
+        name="📊 Progress",
+        value=f"{bar}\n{percent}%"
     )
+
+    if next_rank:
+        embed.add_field(
+            name="Next Rank",
+            value=f"{next_rank} ({next_xp} XP)",
+            inline=False
+        )
 
     await interaction.response.send_message(embed=embed)
 
@@ -543,5 +543,6 @@ async def clear(interaction:discord.Interaction,amount:int):
 # ---------------- START ----------------
 
 bot.run(TOKEN)
+
 
 
