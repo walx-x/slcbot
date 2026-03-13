@@ -33,17 +33,14 @@ cursor=conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS xp(
 user_id BIGINT PRIMARY KEY,
-xp INT
+xp BIGINT
 )
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS warnings(
-id SERIAL PRIMARY KEY,
-user_id BIGINT,
-moderator_id BIGINT,
-reason TEXT,
-timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS xp(
+user_id BIGINT PRIMARY KEY,
+xp BIGINT
 )
 """)
 
@@ -72,21 +69,42 @@ async def send_modlog(guild,title,fields):
 
 def get_xp(user_id):
 
-    cursor.execute("SELECT xp FROM xp WHERE user_id=%s",(user_id,))
-    data=cursor.fetchone()
+    try:
 
-    return data[0] if data else 0
+        cursor.execute(
+            "SELECT xp FROM xp WHERE user_id=%s",
+            (user_id,)
+        )
+
+        data = cursor.fetchone()
+
+        return data[0] if data else 0
+
+    except Exception as e:
+
+        conn.rollback()
+        print("Database error:", e)
+        return 0
+
 
 def set_xp(user_id,xp):
 
-    cursor.execute("""
-    INSERT INTO xp(user_id,xp)
-    VALUES(%s,%s)
-    ON CONFLICT(user_id)
-    DO UPDATE SET xp=%s
-    """,(user_id,xp,xp))
+    try:
 
-    conn.commit()
+        cursor.execute("""
+        INSERT INTO xp(user_id,xp)
+        VALUES(%s,%s)
+        ON CONFLICT(user_id)
+        DO UPDATE SET xp=%s
+        """,(user_id,xp,xp))
+
+        conn.commit()
+
+    except Exception as e:
+
+        conn.rollback()
+        print("Database error:", e)
+
 
 async def update_roles(member,xp):
 
@@ -98,11 +116,9 @@ async def update_roles(member,xp):
             continue
 
         if xp>=req and role not in member.roles:
-
             await member.add_roles(role)
 
         elif xp<req and role in member.roles:
-
             await member.remove_roles(role)
 
 # ---------------- WARN FUNCTIONS ----------------
@@ -212,18 +228,22 @@ async def xp_add(interaction:discord.Interaction,user:discord.Member,amount:int)
 @bot.tree.command(name="xp_remove")
 async def xp_remove(interaction:discord.Interaction,user:discord.Member,amount:int):
 
+    await interaction.response.defer()
+
     xp=max(0,get_xp(user.id)-amount)
 
     set_xp(user.id,xp)
 
     await update_roles(user,xp)
 
-    await interaction.response.send_message(
-    f"Removed {amount} XP from {user.mention} (Total {xp})"
+    await interaction.followup.send(
+        f"Removed {amount} XP from {user.mention} (Total {xp})"
     )
 
 @bot.tree.command(name="xp_check")
 async def xp_check(interaction: discord.Interaction, user: discord.Member=None):
+
+    await interaction.response.defer()
 
     user = user or interaction.user
     xp = get_xp(user.id)
@@ -285,13 +305,32 @@ async def xp_check(interaction: discord.Interaction, user: discord.Member=None):
             inline=False
         )
 
+    await interaction.followup.send(embed=embed)
+
+    if next_rank:
+        embed.add_field(
+            name="Next Rank",
+            value=f"{next_rank} ({next_xp} XP)",
+            inline=False
+        )
+
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="xp_leaderboard")
 async def xp_leaderboard(interaction:discord.Interaction):
 
-    cursor.execute("SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10")
-    rows=cursor.fetchall()
+    await interaction.response.defer()
+
+    try:
+
+        cursor.execute("SELECT user_id,xp FROM xp ORDER BY xp DESC LIMIT 10")
+        rows=cursor.fetchall()
+
+    except Exception as e:
+
+        conn.rollback()
+        await interaction.followup.send("Database error.")
+        return
 
     embed=discord.Embed(
     title="🏆 SLCartel XP Leaderboard",
@@ -313,7 +352,7 @@ async def xp_leaderboard(interaction:discord.Interaction):
         inline=False
         )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 # ---------------- WARN COMMANDS ----------------
 
